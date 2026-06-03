@@ -136,19 +136,31 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
         const page = await browser.newPage();
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         
+        const networkMediaUrls = new Set<string>();
+        
         await page.setRequestInterception(true);
         page.on("request", (req) => {
             const rt = req.resourceType();
-            // Allow everything necessary for CSR rendering, block images/media to save bandwidth
-            if (["image", "font", "media", "stylesheet"].includes(rt)) {
+            // Allow everything necessary for CSR rendering, block images/fonts to save bandwidth
+            if (["image", "font", "stylesheet"].includes(rt)) {
                 req.abort();
             } else {
                 req.continue();
             }
         });
+        
+        page.on("response", async (res) => {
+            try {
+                const url = res.url();
+                if (url.includes('.m3u8') || url.includes('.mp4')) {
+                    networkMediaUrls.add(url);
+                }
+            } catch(e) {}
+        });
 
         const fetchHtml = async (url: string) => {
            await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+           await new Promise(r => setTimeout(r, 2000));
            return await page.content();
         };
 
@@ -231,6 +243,9 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
         while ((match = mediaRegex.exec(html)) !== null) {
           mediaUrls.add(match[1]);
         }
+        
+        // Include any media caught via Puppeteer Network intercept
+        networkMediaUrls.forEach(url => mediaUrls.add(url));
         
         const mediaList = Array.from(mediaUrls).map(url => ({
           url,
