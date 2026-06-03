@@ -98,17 +98,8 @@ async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<s
         try {
             browser = await puppeteer.launch(env.MYBROWSER);
             const page = await browser.newPage();
-            // Block images/styles for faster rendering since we only care about HTML
-            await page.setRequestInterception(true);
-            page.on("request", (req) => {
-                const rt = req.resourceType();
-                if (["image", "stylesheet", "font", "media"].includes(rt)) {
-                    req.abort();
-                } else {
-                    req.continue();
-                }
-            });
-            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            // Just go directly, cloudflare browser handles this smoothly
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
             return await page.content();
         } catch (e: any) {
              console.error("Puppeteer fail fallback to normal fetch", e.message);
