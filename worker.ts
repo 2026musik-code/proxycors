@@ -99,9 +99,33 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
 
         const fetchHtml = async (fetchUrl: string) => {
           const resp = await fetch(fetchUrl, {
-            headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html,*/*" }
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "text/html,*/*" }
           });
-          return await resp.text();
+          // Limit HTML size to ~2MB to prevent Cloudflare Worker CPU/Memory limits on large sites
+          const maxBytes = 2 * 1024 * 1024; 
+          let html = '';
+          
+          if (resp.body) {
+             const reader = resp.body.getReader();
+             let bytes = 0;
+             const decoder = new TextDecoder();
+             while (true) {
+               const { done, value } = await reader.read();
+               if (done) break;
+               if (value) {
+                 html += decoder.decode(value, { stream: true });
+                 bytes += value.length;
+                 if (bytes > maxBytes) {
+                   await reader.cancel();
+                   break;
+                 }
+               }
+             }
+          } else {
+             html = await resp.text();
+             if (html.length > maxBytes) html = html.substring(0, maxBytes);
+          }
+          return html;
         };
 
         const parseHtml = (html: string) => {
@@ -194,21 +218,23 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
         const data = parseHtml(mainHtml);
 
         if (isDeep) {
-          const linksToCrawl = Array.from(new Set(data.internalLinks.map(l => l.href))).filter(href => href !== targetUrl && !href.includes('#')).slice(0, 5);
+          const linksToCrawl = Array.from(new Set(data.internalLinks.map(l => l.href))).filter(href => href !== targetUrl && !href.includes('#')).slice(0, 3);
           if (linksToCrawl.length > 0) {
-            const crawlPromises = linksToCrawl.map(async (href) => {
-              try { const h = await fetchHtml(href); return parseHtml(h); } catch (e) { return null; }
-            });
-            const results = await Promise.all(crawlPromises);
-            results.forEach(res => {
-              if (res) {
-                res.mediaList.forEach(m => { if (!data.mediaList.find(dm => dm.url === m.url)) data.mediaList.push(m); });
-                res.apiEndpoints.forEach(a => data.apiEndpoints.add(a));
-                res.iframes.forEach(iframe => { if (!data.iframes.find(d => d.src === iframe.src)) data.iframes.push(iframe); });
-                res.jsonLdData.forEach(j => data.jsonLdData.push(j));
-                data.htmlLength += res.htmlLength;
+            for (const href of linksToCrawl) {
+              try {
+                const h = await fetchHtml(href);
+                const res = parseHtml(h);
+                if (res) {
+                  res.mediaList.forEach(m => { if (!data.mediaList.find(dm => dm.url === m.url)) data.mediaList.push(m); });
+                  res.apiEndpoints.forEach(a => data.apiEndpoints.add(a));
+                  res.iframes.forEach(iframe => { if (!data.iframes.find(d => d.src === iframe.src)) data.iframes.push(iframe); });
+                  res.jsonLdData.forEach(j => data.jsonLdData.push(j));
+                  data.htmlLength += res.htmlLength;
+                }
+              } catch (e) {
+                console.error("Deep crawl error:", e);
               }
-            });
+            }
           }
         }
 

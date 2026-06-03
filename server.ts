@@ -133,7 +133,8 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           },
-          timeout: 8000
+          timeout: 8000,
+          maxContentLength: 3000000 // 3MB maximum memory load per fetch
         });
         return response.data;
       };
@@ -271,44 +272,25 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
           .slice(0, 5);
 
         if (linksToCrawl.length > 0) {
-          const crawlPromises = linksToCrawl.map(async (href) => {
+          for (const href of linksToCrawl) {
             try {
               const html = await fetchHtml(href);
-              return parseHtml(html, href);
+              const res = parseHtml(html, href);
+              if (res) {
+                res.mediaList.forEach(m => {
+                  if (!data.mediaList.find(dm => dm.url === m.url)) data.mediaList.push(m);
+                });
+                res.apiEndpoints.forEach(a => data.apiEndpoints.add(a));
+                res.iframes.forEach(iframe => {
+                  if (!data.iframes.find(d => d.src === iframe.src)) data.iframes.push(iframe);
+                });
+                res.jsonLdData.forEach(j => data.jsonLdData.push(j));
+                data.htmlLength += res.htmlLength;
+              }
             } catch (err) {
-              return null;
+              console.error(`Error crawling ${href}: ${err}`);
             }
-          });
-          
-          const results = await Promise.all(crawlPromises);
-          
-          // Merge Data
-          results.forEach(res => {
-            if (res) {
-              // Merge media
-              res.mediaList.forEach(m => {
-                if (!data.mediaList.find(dm => dm.url === m.url)) {
-                  data.mediaList.push(m);
-                }
-              });
-              
-              // Merge APIs
-              res.apiEndpoints.forEach(a => data.apiEndpoints.add(a));
-              
-              // Merge iframes
-              res.iframes.forEach(iframe => {
-                if (!data.iframes.find(d => d.src === iframe.src)) {
-                  data.iframes.push(iframe);
-                }
-              });
-
-              // Merge JsonLd
-              res.jsonLdData.forEach(j => data.jsonLdData.push(j));
-              
-              // Increase counts
-              data.htmlLength += res.htmlLength;
-            }
-          });
+          }
         }
       }
 
