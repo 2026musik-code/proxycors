@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
 import * as cheerio from "cheerio";
+import puppeteer from "puppeteer";
 
 async function startServer() {
   const app = express();
@@ -122,28 +123,34 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
       return res.status(400).json({ error: "URL parameter is required" });
     }
 
+    let browser;
     try {
       const parsedUrl = new URL(targetUrl);
       const baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
       const isDeep = req.query.deep === 'true';
 
-      const fetchHtml = async (url: string) => {
-        const response = await axios.get(url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "Upgrade-Insecure-Requests": "1"
-          },
-          timeout: 20000,
-          maxContentLength: 5000000 // 5MB maximum memory load per fetch
+      browser = await puppeteer.launch({ 
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+          headless: true
         });
-        return response.data;
-      };
+        const page = await browser.newPage();
+        await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        
+        await page.setRequestInterception(true);
+        page.on("request", (req) => {
+            const rt = req.resourceType();
+            // Allow everything necessary for CSR rendering, block images/media to save bandwidth
+            if (["image", "font", "media", "stylesheet"].includes(rt)) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
+        const fetchHtml = async (url: string) => {
+           await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+           return await page.content();
+        };
 
       const parseHtml = (html: string, currentUrl: string) => {
         const $ = cheerio.load(html);
@@ -352,6 +359,8 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
         errorMsg = `${error.response.status} Error: ${error.message}`;
       }
       res.status(500).json({ error: `Error scraping URL: ${errorMsg}` });
+    } finally {
+      if (browser) await browser.close();
     }
   });
 

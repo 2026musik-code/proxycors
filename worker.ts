@@ -92,17 +92,23 @@ app.get("/api/proxy", async (c) => {
 });
 
 // Helper for fetching HTML using Browser Rendering API if available
-async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<string> {
+async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<{ html: string, usingPuppeteer: boolean, error: string | null }> {
     if (env.MYBROWSER) {
         let browser;
         try {
             browser = await puppeteer.launch(env.MYBROWSER);
             const page = await browser.newPage();
+            // Important: Hide headless browser user-agent
+            await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            
             // Just go directly, cloudflare browser handles this smoothly
-            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            return await page.content();
+            await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+            console.log("Puppeteer page title:", await page.title());
+            const content = await page.content();
+            return { html: content, usingPuppeteer: true, error: null };
         } catch (e: any) {
              console.error("Puppeteer fail fallback to normal fetch", e.message);
+             return { html: '', usingPuppeteer: false, error: e.message }; // Temporarily return error for debugging
         } finally {
             if (browser) await browser.close();
         }
@@ -139,7 +145,7 @@ async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<s
        html = await resp.text();
        if (html.length > maxBytes) html = html.substring(0, maxBytes);
     }
-    return html;
+    return { html, usingPuppeteer: false, error: "MYBROWSER binding not found or errored" };
 }
 
 app.get("/api/scrape", async (c) => {
@@ -238,7 +244,12 @@ app.get("/api/scrape", async (c) => {
       return { title, metaDescription, metaKeywords, jsonLdData, apiEndpoints, nextJsData, iframes, headings, images, mediaList, internalLinks, externalLinks, htmlLength: html?.length || 0, technologies, ogTitle: $("meta[property='og:title']").attr("content") || "", ogDescription: $("meta[property='og:description']").attr("content") || "", ogImage: $("meta[property='og:image']").attr("content") || "" };
     };
 
-    const mainHtml = await fetchHtmlWithBrowser(c.env, targetUrl);
+    const { html: mainHtml, usingPuppeteer, error: puppeteerError } = await fetchHtmlWithBrowser(c.env, targetUrl);
+    
+    if (puppeteerError) {
+        return c.json({ error: `Puppeteer Error: ${puppeteerError}` }, 500);
+    }
+    
     const data = parseHtml(mainHtml);
 
     if (isDeep) {
@@ -246,14 +257,16 @@ app.get("/api/scrape", async (c) => {
       if (linksToCrawl.length > 0) {
         for (const href of linksToCrawl) {
           try {
-            const h = await fetchHtmlWithBrowser(c.env, href);
-            const res = parseHtml(h);
-            if (res) {
-              res.mediaList.forEach(m => { if (!data.mediaList.find(dm => dm.url === m.url)) data.mediaList.push(m); });
-              res.apiEndpoints.forEach(a => data.apiEndpoints.add(a));
-              res.iframes.forEach(iframe => { if (!data.iframes.find(d => d.src === iframe.src)) data.iframes.push(iframe); });
-              res.jsonLdData.forEach(j => data.jsonLdData.push(j));
-              data.htmlLength += res.htmlLength;
+            const { html: h, error: deepError } = await fetchHtmlWithBrowser(c.env, href);
+            if (!deepError && h) {
+                const res = parseHtml(h);
+                if (res) {
+                  res.mediaList.forEach(m => { if (!data.mediaList.find(dm => dm.url === m.url)) data.mediaList.push(m); });
+                  res.apiEndpoints.forEach(a => data.apiEndpoints.add(a));
+                  res.iframes.forEach(iframe => { if (!data.iframes.find(d => d.src === iframe.src)) data.iframes.push(iframe); });
+                  res.jsonLdData.forEach(j => data.jsonLdData.push(j));
+                  data.htmlLength += res.htmlLength;
+                }
             }
           } catch (e) {
             console.error("Deep crawl error:", e);
@@ -265,7 +278,7 @@ app.get("/api/scrape", async (c) => {
     return c.json({
       metadata: { title: data.title, description: data.metaDescription, keywords: data.metaKeywords },
       openGraph: { title: data.ogTitle, description: data.ogDescription, image: data.ogImage },
-      stats: { htmlLength: data.htmlLength, internalLinkCount: data.internalLinks.length, externalLinkCount: data.externalLinks.length, imageCount: data.images.length, mediaCount: data.mediaList.length, iframeCount: data.iframes.length, pagesCrawled: isDeep ? 6 : 1 },
+      stats: { htmlLength: data.htmlLength, internalLinkCount: data.internalLinks.length, externalLinkCount: data.externalLinks.length, imageCount: data.images.length, mediaCount: data.mediaList.length, iframeCount: data.iframes.length, pagesCrawled: isDeep ? 6 : 1, usingPuppeteer },
       deepData: { jsonLd: data.jsonLdData, apiEndpoints: Array.from(data.apiEndpoints), iframes: data.iframes, hasNextJsState: !!data.nextJsData },
       technologies: data.technologies,
       seo: { titleLength: data.title.length, descriptionLength: data.metaDescription.length, h1Count: data.headings.h1.length, imagesMissingAlt: data.images.filter(img => !img.alt).length },
