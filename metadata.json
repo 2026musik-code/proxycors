@@ -1,0 +1,6 @@
+{
+  "name": "Spectral Web Inspector",
+  "description": "A web proxy and scraper tool based on DEDI1956/acname, allowing users to fetch web pages directly and scrape metadata/links bypassing CORS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
