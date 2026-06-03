@@ -10,6 +10,38 @@ async function startServer() {
 
   app.use(express.json());
 
+  app.post("/api/ai-analyze", express.json(), async (req, res) => {
+    try {
+      const apiKey = req.headers["x-gemini-key"] || process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(400).json({ error: "GEMINI API KEY is missing. Please configure it in Settings." });
+      }
+
+      const { metadata, seo, stats, headings } = req.body;
+      const prompt = `You are an expert SEO and Web Performance Analyst.
+Review the following extracted website data and provide a concise, structured SEO & Content analysis.
+Format your response in Markdown. Include:
+1. **Overall Score** (Out of 100)
+2. **Strengths** (What they did right)
+3. **Weaknesses** (Critical issues)
+4. **Actionable Recommendations** (How to fix the issues)
+
+Website Data:
+${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)}`;
+
+      const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`, {
+         contents: [{ parts: [{ text: prompt }] }],
+         generationConfig: { temperature: 0.4 }
+      }, { headers: { 'Content-Type': 'application/json' } });
+
+      const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text || "No analysis generated.";
+      res.json({ analysis: text });
+    } catch (error: any) {
+      console.error("AI Error:", error.message);
+      res.status(500).json({ error: `AI request failed: ${error.message}` });
+    }
+  });
+
   app.get("/api/proxy", async (req, res) => {
     const targetUrl = req.query.url as string;
 

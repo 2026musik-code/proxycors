@@ -5,7 +5,8 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Globe, FileSearch, Terminal, Loader2, Link2, Sparkles, LayoutDashboard, Heading, Image as ImageIcon, Link as LinkIcon, Code2, Clock, Download, Copy, Check, Film, PlayCircle, Activity, Cpu, AlertTriangle, CheckCircle2, XCircle, Database } from 'lucide-react';
+import Markdown from 'react-markdown';
+import { Globe, FileSearch, Terminal, Loader2, Link2, Sparkles, LayoutDashboard, Heading, Image as ImageIcon, Link as LinkIcon, Code2, Clock, Download, Copy, Check, Film, PlayCircle, Activity, Cpu, AlertTriangle, CheckCircle2, XCircle, Database, Menu, X, Settings } from 'lucide-react';
 
 function LinkItem({ link, type }: { link: any, type: 'internal' | 'external' }) {
   const [testing, setTesting] = useState(false);
@@ -83,8 +84,22 @@ export default function App() {
   const [output, setOutput] = useState<string | null>(null);
   const [scrapeData, setScrapeData] = useState<any | null>(null);
   const [mode, setMode] = useState<'proxy' | 'scrape' | null>(null);
-  const [subTab, setSubTab] = useState<'overview' | 'insights' | 'headings' | 'images' | 'links' | 'media' | 'deep' | 'raw'>('overview');
+  const [subTab, setSubTab] = useState<'overview' | 'insights' | 'headings' | 'images' | 'links' | 'media' | 'deep' | 'ai' | 'raw'>('overview');
   const [copied, setCopied] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+
+  useEffect(() => {
+    const savedKey = localStorage.getItem('vpsai_gemini_key');
+    if (savedKey) setApiKey(savedKey);
+  }, []);
+
+  const saveKey = (val: string) => {
+    setApiKey(val);
+    localStorage.setItem('vpsai_gemini_key', val);
+  };
 
   const fetchAction = async (action: 'proxy' | 'scrape') => {
     if (!url) return;
@@ -144,6 +159,32 @@ export default function App() {
     URL.revokeObjectURL(urlBlob);
   };
 
+  const runAiAnalysis = async () => {
+    if (!scrapeData) return;
+    setAnalyzing(true);
+    setAiAnalysis(null);
+    try {
+      const response = await fetch('/api/ai-analyze', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'x-gemini-key': apiKey } : {})
+        },
+        body: JSON.stringify(scrapeData)
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}: ${await response.text()}`);
+      }
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setAiAnalysis(data.analysis);
+    } catch (err: any) {
+      setAiAnalysis(`⚠️ AI Analysis Failed: ${err.message}\n\nPlease ensure your GEMINI_API_KEY is configured in Cloudflare Workers secrets.`);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const renderScrapeView = () => {
     if (!scrapeData) return null;
 
@@ -153,6 +194,7 @@ export default function App() {
         <div className="flex items-center gap-1.5 p-3 border-b border-neutral-800/80 bg-neutral-900/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] sticky top-0 z-10 backdrop-blur-sm">
           {[
             { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+            { id: 'ai', icon: Sparkles, label: 'AI Review ✨' },
             { id: 'insights', icon: Cpu, label: 'SEO & Tech' },
             { id: 'headings', icon: Heading, label: 'Headings' },
             { id: 'images', icon: ImageIcon, label: 'Images' },
@@ -187,6 +229,49 @@ export default function App() {
 
         {/* Content Area */}
         <div className="p-4 sm:p-6 overflow-y-auto max-h-[650px] relative">
+          {subTab === 'ai' && (
+            <div className="flex flex-col h-full space-y-6">
+              <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 border border-indigo-500/20 rounded-2xl p-6 sm:p-8 relative overflow-hidden shrink-0">
+                <div className="absolute top-0 right-0 p-8 opacity-10 blur-xl pointer-events-none">
+                   <Sparkles size={120} className="text-indigo-400" />
+                </div>
+                <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6">
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400 flex items-center gap-2 mb-2">
+                      <Sparkles size={24} className="text-indigo-400" />
+                      AI Review & Analysis
+                    </h3>
+                    <p className="text-sm font-medium text-indigo-200/70 max-w-xl">
+                      Let our AI analyze this page's SEO performance, content quality, and technical health based on the extracted metadata.
+                    </p>
+                  </div>
+                  <button
+                    onClick={runAiAnalysis}
+                    disabled={analyzing}
+                    className="flex shrink-0 items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white shadow-lg shadow-indigo-900/20 font-medium transition-all"
+                  >
+                    {analyzing ? (
+                      <><Loader2 size={16} className="animate-spin" /> Analyzing...</>
+                    ) : (
+                      <><Sparkles size={16} /> {aiAnalysis ? 'Regenerate Analysis' : 'Run AI Analysis'}</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {aiAnalysis && (
+                <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl p-5 sm:p-8 flex-1">
+                  <div className="prose prose-invert prose-sm sm:prose-base prose-indigo max-w-none 
+                    prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-h4:text-base 
+                    prose-strong:text-indigo-300 prose-a:text-indigo-400
+                    prose-p:text-neutral-300 prose-li:text-neutral-300">
+                    <Markdown>{aiAnalysis}</Markdown>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {subTab === 'overview' && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -678,9 +763,72 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-neutral-950 text-neutral-100 font-sans selection:bg-indigo-500/30 flex flex-col">
+      {/* Settings Modal (VPSAI R2 Config) */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="px-6 py-4 border-b border-neutral-800/80 bg-neutral-950/50 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-white font-medium">
+                  <Settings size={18} className="text-neutral-400" />
+                  Settings
+                </div>
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="p-1 rounded-md text-neutral-500 hover:bg-neutral-800 hover:text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-2">Gemini API Key (VPSAI)</label>
+                  <div className="relative">
+                    <input 
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => saveKey(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full bg-neutral-950 border border-neutral-800 text-white px-4 py-2.5 rounded-xl outline-none focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 text-sm font-mono placeholder:text-neutral-600 transition-all"
+                    />
+                  </div>
+                  <p className="text-xs text-neutral-500 mt-2">
+                    Key is securely saved in your browser's local storage and passed directly to the backend analysis engine.
+                  </p>
+                </div>
+              </div>
+              <div className="px-6 py-4 bg-neutral-950/50 border-t border-neutral-800/50 flex justify-end">
+                <button 
+                  onClick={() => setShowSettings(false)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors shadow-lg shadow-indigo-900/20"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
-      <header className="border-b border-white/10 bg-neutral-900/50 backdrop-blur-md px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
-        <div className="h-8 w-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+      <header className="border-b border-white/10 bg-neutral-900/50 backdrop-blur-md px-4 sm:px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
+        <button 
+          onClick={() => setShowSettings(true)}
+          className="p-1.5 sm:p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors mr-1 sm:mr-2"
+        >
+          <Menu size={22} />
+        </button>
+        <div className="h-8 w-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shrink-0">
           <Globe size={18} />
         </div>
         <div>

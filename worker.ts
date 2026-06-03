@@ -24,6 +24,47 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/ai-analyze") {
+      if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+      const apiKey = request.headers.get("x-gemini-key") || env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: "GEMINI API KEY is missing. Please setup your key via the Settings menu." }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      try {
+        const body: any = await request.json();
+        const { metadata, seo, stats, headings } = body;
+        
+        const prompt = `You are an expert SEO and Web Performance Analyst.
+Review the following extracted website data and provide a concise, structured SEO & Content analysis.
+Format your response in Markdown. Include:
+1. **Overall Score** (Out of 100)
+2. **Strengths** (What they did right)
+3. **Weaknesses** (Critical issues)
+4. **Actionable Recommendations** (How to fix the issues)
+
+Website Data:
+${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)}
+`;
+
+        const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+             contents: [{ parts: [{ text: prompt }] }],
+             generationConfig: { temperature: 0.4 }
+          })
+        });
+
+        const result: any = await aiResponse.json();
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "No analysis generated.";
+
+        return new Response(JSON.stringify({ analysis: text }), { headers: { 'Content-Type': 'application/json' } });
+      } catch (error: any) {
+        return new Response(JSON.stringify({ error: `AI request failed: ${error.message}` }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+
     if (url.pathname === "/api/proxy") {
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) return new Response("URL parameter required", { status: 400 });
