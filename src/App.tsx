@@ -125,13 +125,24 @@ export default function App() {
       
       if (action === 'scrape') {
         const data = await response.json();
+        // If data is returned but there's a scraped error string
+        if (data.error) {
+           throw new Error(data.error);
+        }
         setScrapeData(data);
       } else {
         const text = await response.text();
         setOutput(text);
       }
     } catch (err: any) {
-      setOutput(`Error: ${err.message}`);
+      setOutput(`Failed to process request: ${err.message}
+
+⚠️ Common reasons for failure:
+1. Anti-Bot Protection (Cloudflare, Distil, etc.) restricts automated requests.
+2. The site relies heavily on Client-Side Rendering (CSR) and requires a real browser (JavaScript enabled).
+3. The server timed out or blocked our IP.
+
+Our scraper uses standard HTTP requests. If a site actively blocks non-browser traffic, it cannot be scraped this way.`);
       setMode('proxy'); // Fallback to terminal view for errors
     } finally {
       setLoading(false);
@@ -376,6 +387,18 @@ export default function App() {
           )}
 
           {subTab === 'insights' && (
+            <div className="space-y-6">
+              {(scrapeData.technologies?.includes('React') || scrapeData.technologies?.includes('Vue.js') || scrapeData.technologies?.includes('Angular') || scrapeData.technologies?.includes('Next.js') || scrapeData.technologies?.includes('Nuxt.js')) && (
+                <div className="bg-amber-900/10 border border-amber-900/30 rounded-xl p-4 flex items-start gap-3">
+                  <AlertTriangle size={18} className="text-amber-500 mt-0.5 shrink-0" />
+                  <div>
+                    <h4 className="text-sm font-medium text-amber-500 mb-1">Client-Side Rendered (CSR) Site Detected</h4>
+                    <p className="text-xs text-amber-200/70">
+                      This site relies on JavaScript frameworks to render its content. Our scraper relies on static HTML parsing, which means some internal links, dynamic text, and lazy-loaded images might not be fully visible. Consider providing a pre-rendered or server-side rendered (SSR) version if available.
+                    </p>
+                  </div>
+                </div>
+              )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Tech Stack detection */}
               <div className="bg-neutral-900/60 border border-neutral-800/80 rounded-xl overflow-hidden self-start">
@@ -490,6 +513,7 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </div>
           )}
 
           {subTab === 'headings' && (
