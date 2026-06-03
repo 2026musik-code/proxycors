@@ -92,7 +92,7 @@ app.get("/api/proxy", async (c) => {
 });
 
 // Helper for fetching HTML using Browser Rendering API if available
-async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<{ html: string, usingPuppeteer: boolean, error: string | null }> {
+async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<{ html: string, usingPuppeteer: boolean, error: string | null, networkMediaUrls: string[] }> {
     if (env.MYBROWSER) {
         let browser;
         try {
@@ -101,14 +101,40 @@ async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<{
             // Important: Hide headless browser user-agent
             await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
             
+            const networkMediaUrls = new Set<string>();
+            try {
+               await page.setRequestInterception(true);
+               page.on("request", (req) => {
+                   const rt = req.resourceType();
+                   if (["image", "font", "stylesheet"].includes(rt as string)) {
+                       req.abort();
+                   } else {
+                       req.continue();
+                   }
+               });
+               
+               page.on("response", async (res) => {
+                   try {
+                       const url = res.url();
+                       if (url.includes('.m3u8') || url.includes('.mp4')) {
+                           networkMediaUrls.add(url);
+                       }
+                   } catch(e) {}
+               });
+            } catch (interceptErr) {
+               console.error("Puppeteer intercept error:", interceptErr);
+            }
+            
             // Just go directly, cloudflare browser handles this smoothly
             await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
             console.log("Puppeteer page title:", await page.title());
+            // Wait extra time for async videos to load
+            await new Promise(r => setTimeout(r, 2000));
             const content = await page.content();
-            return { html: content, usingPuppeteer: true, error: null };
+            return { html: content, usingPuppeteer: true, error: null, networkMediaUrls: Array.from(networkMediaUrls) };
         } catch (e: any) {
              console.error("Puppeteer fail fallback to normal fetch", e.message);
-             return { html: '', usingPuppeteer: false, error: e.message }; // Temporarily return error for debugging
+             return { html: '', usingPuppeteer: false, error: e.message, networkMediaUrls: [] }; // Temporarily return error for debugging
         } finally {
             if (browser) await browser.close();
         }
@@ -145,7 +171,7 @@ async function fetchHtmlWithBrowser(env: Bindings, targetUrl: string): Promise<{
        html = await resp.text();
        if (html.length > maxBytes) html = html.substring(0, maxBytes);
     }
-    return { html, usingPuppeteer: false, error: "MYBROWSER binding not found or errored" };
+    return { html, usingPuppeteer: false, error: "MYBROWSER binding not found or errored", networkMediaUrls: [] };
 }
 
 app.get("/api/scrape", async (c) => {
@@ -244,13 +270,20 @@ app.get("/api/scrape", async (c) => {
       return { title, metaDescription, metaKeywords, jsonLdData, apiEndpoints, nextJsData, iframes, headings, images, mediaList, internalLinks, externalLinks, htmlLength: html?.length || 0, technologies, ogTitle: $("meta[property='og:title']").attr("content") || "", ogDescription: $("meta[property='og:description']").attr("content") || "", ogImage: $("meta[property='og:image']").attr("content") || "" };
     };
 
-    const { html: mainHtml, usingPuppeteer, error: puppeteerError } = await fetchHtmlWithBrowser(c.env, targetUrl);
+    const { html: mainHtml, usingPuppeteer, error: puppeteerError, networkMediaUrls } = await fetchHtmlWithBrowser(c.env, targetUrl);
     
     if (puppeteerError) {
         return c.json({ error: `Puppeteer Error: ${puppeteerError}` }, 500);
     }
     
     const data = parseHtml(mainHtml);
+    if (networkMediaUrls && networkMediaUrls.length > 0) {
+       networkMediaUrls.forEach(url => {
+          if (!data.mediaList.find(m => m.url === url)) {
+             data.mediaList.push({ url, type: url.includes(".m3u8") ? "HLS" : "Video" });
+          }
+       });
+    }
 
     if (isDeep) {
       const linksToCrawl = Array.from(new Set(data.internalLinks.map(l => l.href))).filter(href => href !== targetUrl && !href.includes('#')).slice(0, 3);
