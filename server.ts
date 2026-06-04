@@ -390,36 +390,73 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
     }
   });
 
-  app.get('/', (req, res) => {
-    res.redirect('/app/');
-  });
-
-  // Reverse Proxy for dracinku.site
-  app.all(/^\/(assets|api|d-proxy|image|browse|search|play|history|login)(\/.*)?$/, async (req, res, next) => {
-    // Exclude our own API
-    if (req.path.startsWith('/api/scrape') || req.path.startsWith('/api/health') || req.path.startsWith('/api/check') || req.path.startsWith('/api/proxy') || req.path.startsWith('/api/ai-analyze')) {
+  // Generic Reverse Proxy
+  app.all('*', async (req, res, next) => {
+    // Exclude our own API and Vite paths
+    if (['/api/ai-analyze', '/api/proxy', '/api/check', '/api/scrape'].includes(req.path) || 
+        req.path.startsWith('/app') || 
+        req.path.startsWith('/@') || req.path.startsWith('/src') || 
+        req.path.startsWith('/node_modules') || req.path.endsWith('.tsx') || req.path.endsWith('.ts')) {
       return next();
     }
     
-    let targetPath = req.path;
-    if (req.path.startsWith('/d-proxy')) {
-        targetPath = req.path.replace('/d-proxy', '') || '/';
+    let targetOrigin = '';
+    const cookies = (req.headers.cookie || '').split(';').map(c => c.trim());
+    for (const c of cookies) {
+        if (c.startsWith('proxy_target=')) {
+            targetOrigin = decodeURIComponent(c.substring('proxy_target='.length));
+        }
+    }
+
+    let targetUrlString = '';
+
+    // If queryUrl is provided on the root or anywhere, we use it as the new proxy target
+    const queryUrl = req.query.url as string;
+    if (queryUrl) {
+        try {
+            const u = new URL(queryUrl);
+            targetOrigin = u.origin;
+            // set cookie for future requests from this origin
+            res.cookie('proxy_target', encodeURIComponent(targetOrigin), { path: '/' });
+            targetUrlString = queryUrl;
+        } catch(e) {}
+    }
+
+    // If no target and we are at the root, redirect to /app/
+    if (!targetOrigin && req.path === '/') {
+        return res.redirect('/app/');
+    }
+
+    if (!targetOrigin) {
+        return next();
     }
     
-    const targetUrl = `https://dracinku.site${targetPath}${req.url.substring(req.path.length)}`;
+    if (!targetUrlString) {
+        targetUrlString = targetOrigin + req.path + req.url.substring(req.path.length);
+    }
+
+    console.log(`[PROXY] Intercepted ${req.path}. Proxying to ${targetUrlString}`);
     
     try {
         const rHeaders: any = {};
         for(let k in req.headers) {
-            if (!['host', 'connection', 'referer', 'origin'].includes(k.toLowerCase())) {
+            if (!['host', 'connection', 'referer', 'origin', 'content-length'].includes(k.toLowerCase())) {
                rHeaders[k] = req.headers[k];
             }
         }
-        rHeaders['host'] = 'dracinku.site';
-        rHeaders['referer'] = 'https://dracinku.site/';
-        rHeaders['origin'] = 'https://dracinku.site';
+        
+        let u: URL;
+        try {
+           u = new URL(targetUrlString);
+        } catch(e) {
+           return res.status(400).send("Invalid proxy target URL");
+        }
 
-        const response = await fetch(targetUrl, {
+        rHeaders['host'] = u.host;
+        rHeaders['origin'] = u.origin;
+        rHeaders['referer'] = u.origin + '/';
+
+        const response = await fetch(targetUrlString, {
             method: req.method,
             headers: rHeaders,
             body: ['GET', 'HEAD'].includes(req.method) ? undefined : req.body as any,
@@ -427,26 +464,52 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
         });
         
         response.headers.forEach((val, key) => {
-            if (!['content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
+            if (!['content-encoding', 'content-length', 'transfer-encoding', 'x-frame-options', 'content-security-policy'].includes(key.toLowerCase())) {
                 res.setHeader(key, val);
             }
         });
+        
+        // Ensure iframe rendering is not blocked
+        res.removeHeader('X-Frame-Options');
+        res.removeHeader('Content-Security-Policy');
+        res.setHeader('Access-Control-Allow-Origin', '*');
         
         res.status(response.status);
         
         const contentType = response.headers.get('content-type') || '';
         if (contentType.includes('text/html')) {
             let html = await response.text();
+            
+            // Rewrite window.location so Next.js doesn't freak out
             html = html.replace('<head>', `<head>
                <script>
+                   window.__PROXY_ROOT__ = true;
+                   
+                   // Intercept fetch
                    const _fetch = window.fetch;
                    window.fetch = async (...args) => {
                        const url = typeof args[0] === 'string' ? args[0] : (args[0] ? args[0].url : '');
-                       if (url && (url.includes('.m3u8') || url.includes('.mp4'))) {
+                       if (url && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts'))) {
                            window.parent.postMessage({ type: 'MEDIA_FOUND', src: url }, '*');
                        }
                        return _fetch(...args);
                    };
+
+                   // Intercept XMLHttpRequest
+                   const _XHR = window.XMLHttpRequest;
+                   window.XMLHttpRequest = function() {
+                       const xhr = new _XHR();
+                       const _open = xhr.open;
+                       xhr.open = function(method, url, ...rest) {
+                           if (typeof url === 'string' && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts'))) {
+                               window.parent.postMessage({ type: 'MEDIA_FOUND', src: url }, '*');
+                           }
+                           return _open.call(this, method, url, ...rest);
+                       };
+                       return xhr;
+                   };
+
+                   // Intercept video play
                    document.addEventListener('play', (e) => {
                        if (e.target && e.target.src) {
                            window.parent.postMessage({ type: 'MEDIA_FOUND', src: e.target.src }, '*');

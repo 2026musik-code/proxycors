@@ -103,6 +103,7 @@ export default function App() {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [apiKey, setApiKey] = useState('');
 
   useEffect(() => {
@@ -221,45 +222,8 @@ Our scraper uses standard HTTP requests. If a site actively blocks non-browser t
 
     return (
       <div className="flex flex-col h-full bg-[#0a0a0a]">
-        {/* Sub Navigation */}
-        <div className="flex items-center gap-1.5 p-3 border-b border-neutral-800/80 bg-neutral-900/30 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] sticky top-0 z-10 backdrop-blur-sm">
-          {[
-            { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
-            { id: 'ai', icon: Sparkles, label: 'AI Review ✨' },
-            { id: 'insights', icon: Cpu, label: 'SEO & Tech' },
-            { id: 'headings', icon: Heading, label: 'Headings' },
-            { id: 'images', icon: ImageIcon, label: 'Images' },
-            { id: 'media', icon: Film, label: 'Media & Video' },
-            { id: 'links', icon: LinkIcon, label: 'Links' },
-            { id: 'deep', icon: Database, label: 'Deep Scan Data' },
-            { id: 'raw', icon: Code2, label: 'Raw Output' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSubTab(tab.id as any)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap shrink-0 border ${
-                subTab === tab.id 
-                  ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20 shadow-sm shadow-indigo-900/10' 
-                  : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/80 border-transparent hover:border-neutral-700/50'
-              }`}
-            >
-              <tab.icon size={14} className={subTab === tab.id ? 'text-indigo-400' : 'text-neutral-500'} />
-              {tab.label}
-            </button>
-          ))}
-          
-          <div className="flex-1 min-w-[20px]" />
-          <button 
-            onClick={exportAsJSON}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 transition-colors whitespace-nowrap shrink-0 border border-emerald-400/20 shadow-sm shadow-emerald-900/10"
-          >
-            <Download size={14} />
-            Export
-          </button>
-        </div>
-
         {/* Content Area */}
-        <div className="p-4 sm:p-6 overflow-y-auto max-h-[650px] relative">
+        <div className="p-4 sm:p-6 overflow-y-auto h-full flex-1 relative">
           {subTab === 'ai' && (
             <div className="flex flex-col h-full space-y-6">
               <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 border border-indigo-500/20 rounded-2xl p-6 sm:p-8 relative overflow-hidden shrink-0">
@@ -806,7 +770,7 @@ Our scraper uses standard HTTP requests. If a site actively blocks non-browser t
   };
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-neutral-950 text-neutral-100 font-sans selection:bg-indigo-500/30 flex flex-col">
+    <div className="flex h-screen w-full overflow-hidden bg-[#050505] text-neutral-100 font-sans selection:bg-indigo-500/30">
       {/* Settings Modal (VPSAI R2 Config) */}
       <AnimatePresence>
         {showSettings && (
@@ -864,164 +828,232 @@ Our scraper uses standard HTTP requests. If a site actively blocks non-browser t
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <header className="border-b border-white/10 bg-neutral-900/50 backdrop-blur-md px-4 sm:px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
-        <button 
-          onClick={() => setShowSettings(true)}
-          className="p-1.5 sm:p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors mr-1 sm:mr-2"
-        >
-          <Menu size={22} />
-        </button>
-        <div className="h-8 w-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shrink-0">
-          <Globe size={18} />
-        </div>
-        <div>
-          <h1 className="text-sm font-semibold tracking-wide text-neutral-100">Spectral Web Inspector</h1>
-          <p className="text-xs text-neutral-500 tracking-tight">Advanced Proxy & Scrape Service</p>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-8 flex flex-col gap-8 mt-4 sm:mt-12">
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center space-y-4"
-        >
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-800 border border-neutral-700 text-xs font-medium text-neutral-300 mb-2">
-            <Sparkles size={14} className="text-indigo-400" />
-            <span>Deep inspection engine</span>
-          </div>
-          <h2 className="text-3xl sm:text-5xl font-medium tracking-tight text-white mb-2">
-            Inspect the web deeply.
-          </h2>
-          <p className="text-neutral-400 max-w-lg mx-auto text-sm sm:text-base">
-            Bypass CORS constraints or extract structured metadata, headings, images, and links instantly.
-          </p>
-        </motion.div>
-
-        {/* Input Bar */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
-          className="w-full max-w-3xl mx-auto shadow-2xl relative z-20 group"
-        >
-          <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl blur-lg opacity-20 group-focus-within:opacity-40 transition duration-500"></div>
-          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl p-2 sm:p-3 relative flex flex-col sm:flex-row gap-3 shadow-inner">
-            <div className="flex-1 relative flex items-center">
-              <Link2 className="absolute left-4 text-neutral-500" size={20} />
-              <input
-                type="text"
-                placeholder="https://example.com"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') fetchAction('scrape');
-                }}
-                className="w-full bg-transparent border-none text-white px-12 py-3 outline-none placeholder:text-neutral-600 focus:ring-0 font-mono text-sm"
-                spellCheck={false}
-              />
-            </div>
-            
-            <div className="flex shrink-0 gap-2 px-2 sm:px-0 overflow-x-auto">
-              <button
-                onClick={() => fetchAction('interactive')}
-                disabled={loading || !url}
-                className="flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed border border-white/5 transition-colors text-white shadow-md shadow-emerald-900/20 text-sm font-medium"
-              >
-                <LayoutDashboard size={16} />
-                Interactive
-              </button>
-              <button
-                onClick={() => fetchAction('proxy')}
-                disabled={loading || !url}
-                className="flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed border border-white/5 transition-colors text-sm font-medium"
-              >
-                <Globe size={16} />
-                Proxy
-              </button>
-              <button
-                onClick={() => fetchAction('scrape')}
-                disabled={loading || !url}
-                className="flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-md shadow-indigo-900/20 transition-all text-sm font-medium"
-              >
-                <FileSearch size={16} />
-                Deep Scrape
-              </button>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Output Area */}
-        <AnimatePresence>
-          {mode && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="w-full mx-auto rounded-2xl border border-neutral-800 bg-[#0a0a0a] overflow-hidden flex flex-col"
-            >
-              <div className="bg-neutral-900 border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-neutral-400">
-                  {mode === 'interactive' ? <LayoutDashboard size={16} /> : mode === 'proxy' || !scrapeData ? <Terminal size={16} /> : <FileSearch size={16} />}
-                  <span className="text-xs font-mono uppercase tracking-widest text-neutral-500">
-                    {mode === 'interactive' ? 'Interactive Browser Proxy' : mode === 'proxy' || !scrapeData ? 'Terminal Output' : 'Scrape Results'}
-                  </span>
-                </div>
-                <div className="flex gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-red-500/20 border border-red-500/50" />
-                  <div className="w-3 h-3 rounded-full bg-yellow-500/20 border border-yellow-500/50" />
-                  <div className="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/50" />
-                </div>
-              </div>
-
-              <div className="flex-1 w-full">
-                {loading ? (
-                  <div className="flex flex-col items-center justify-center py-32 text-neutral-500 gap-4">
-                    <Loader2 size={32} className="animate-spin text-indigo-500" />
-                    <p className="text-sm font-mono animate-pulse">Running advanced inspection...</p>
+      {/* Sidebar */}
+      <AnimatePresence initial={false}>
+        {sidebarOpen && (
+          <motion.aside 
+            initial={{ width: 0 }}
+            animate={{ width: 288 }}
+            exit={{ width: 0 }}
+            transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
+            className="shrink-0 border-r border-white/5 bg-neutral-900/40 h-full z-30 overflow-hidden relative"
+          >
+            <div className="w-72 flex flex-col h-full absolute inset-0">
+              {/* Header inside Sidebar */}
+              <div className="p-5 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shrink-0">
+                    <Globe size={18} />
                   </div>
-                ) : (
-                  <>
-                    {mode === 'interactive' ? (
-                       <div className="flex flex-col h-[700px]">
-                           {interactiveMedia.length > 0 && (
-                               <div className="bg-emerald-950/30 border-b border-emerald-900/50 p-3">
-                                   <div className="text-emerald-400 font-mono text-sm mb-2 flex items-center gap-2">
-                                       <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                       Media Sniffed:
-                                   </div>
-                                   <div className="flex flex-col gap-2">
-                                       {interactiveMedia.map((m, i) => (
-                                           <div key={i} className="flex items-center justify-between p-2 rounded bg-black/40 border border-white/5">
-                                               <span className="text-xs truncate font-mono select-all text-neutral-300 w-4/5">{m}</span>
-                                               <a href={m} target="_blank" rel="noreferrer" className="text-xs bg-emerald-600/20 text-emerald-300 px-2 py-1 rounded hover:bg-emerald-600/40">Open</a>
-                                           </div>
-                                       ))}
-                                   </div>
-                               </div>
-                           )}
-                           <iframe 
-                             className="flex-1 w-full border-none bg-white" 
-                             src={`/d-proxy${new URL("http://" + url.replace(/^https?:\/\//, '')).pathname + new URL("http://" + url.replace(/^https?:\/\//, '')).search}`}
-                             sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-                           />
-                       </div>
-                    ) : mode === 'scrape' && scrapeData ? (
-                      renderScrapeView()
-                    ) : (
-                      <div className="p-4 sm:p-6 w-full min-w-0 overflow-y-auto max-h-[600px] overflow-hidden">
-                        <pre className="font-mono text-xs sm:text-sm leading-relaxed text-blue-200/90 whitespace-pre-wrap break-all break-words min-w-0 w-full">
-                          {output}
-                        </pre>
-                      </div>
-                    )}
-                  </>
-                )}
+                  <div>
+                    <h1 className="text-sm font-semibold tracking-wide text-neutral-100">Spectral Web</h1>
+                    <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Inspector</p>
+                  </div>
+                </div>
+                <button 
+                   onClick={() => setSidebarOpen(false)}
+                   className="p-1 sm:hidden text-neutral-500 hover:text-white"
+                >
+                   <X size={18} />
+                </button>
               </div>
+
+              {/* Sidebar Content */}
+              <div className="flex-1 flex flex-col p-5 gap-8 overflow-y-auto w-full">
+                
+                {/* Analyze / Inspect Target */}
+                <div className="flex flex-col gap-3">
+                  <div className="text-xs font-semibold text-neutral-500 tracking-wider">INSPECTION MODE</div>
+                  
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => fetchAction('interactive')}
+                      disabled={loading || !url}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${mode === 'interactive' ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-400' : 'bg-neutral-800/50 hover:bg-neutral-800 border-white/5 text-neutral-300'}`}
+                    >
+                      <LayoutDashboard size={14} /> Interactive Proxy
+                    </button>
+                    
+                    <button
+                      onClick={() => fetchAction('proxy')}
+                      disabled={loading || !url}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${mode === 'proxy' ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-400' : 'bg-neutral-800/50 hover:bg-neutral-800 border-white/5 text-neutral-300'}`}
+                    >
+                      <Globe size={14} /> Proxy Engine
+                    </button>
+                    
+                    <button
+                      onClick={() => fetchAction('scrape')}
+                      disabled={loading || !url}
+                      className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${mode === 'scrape' ? 'bg-purple-600/20 border-purple-500/50 text-purple-400' : 'bg-neutral-800/50 hover:bg-neutral-800 border-white/5 text-neutral-300'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileSearch size={14} /> Deep Scrape
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar Footer */}
+              <div className="p-4 border-t border-white/5 w-full">
+                <button 
+                  onClick={() => setShowSettings(true)}
+                  className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors w-full p-2 hover:bg-neutral-800/50 rounded-lg"
+                >
+                  <Settings size={16} /> API Settings
+                </button>
+              </div>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[#050505]">
+        <div className="p-4 border-b border-neutral-800/80 bg-neutral-900/30 backdrop-blur-md flex items-center shrink-0 z-20 gap-3">
+          <button 
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className={`h-11 w-11 shrink-0 rounded-xl flex items-center justify-center transition-all border ${sidebarOpen ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/20 shadow-inner' : 'bg-neutral-800/80 text-neutral-300 border-neutral-700/50 hover:text-white hover:bg-neutral-700 hover:border-neutral-600'}`}
+          >
+            <Globe size={20} />
+          </button>
+          
+          <div className="max-w-2xl w-full relative flex-1">
+            <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" size={18} />
+            <input
+              type="text"
+              placeholder="https://example.com"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') fetchAction(mode || 'scrape');
+              }}
+              className="w-full bg-neutral-950 border border-neutral-800 text-white pl-12 pr-4 py-2.5 rounded-xl outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 font-mono text-sm shadow-inner transition-all hover:border-neutral-700"
+              spellCheck={false}
+            />
+          </div>
+        </div>
+
+        {!mode && !loading && (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center space-y-4 max-w-lg"
+            >
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-800 border border-neutral-700 text-xs font-medium text-neutral-300 mb-2">
+                <Sparkles size={14} className="text-indigo-400" />
+                <span>Deep inspection engine</span>
+              </div>
+              <h2 className="text-3xl font-medium tracking-tight text-white mb-2">Inspect the web deeply.</h2>
+              <p className="text-neutral-400 text-sm">Bypass CORS constraints or extract structured metadata, headings, images, and links instantly using the sidebar controls.</p>
             </motion.div>
-          )}
-        </AnimatePresence>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex flex-1 flex-col items-center justify-center py-32 text-neutral-500 gap-4">
+            <Loader2 size={32} className="animate-spin text-indigo-500" />
+            <p className="text-sm font-mono animate-pulse">Running advanced inspection...</p>
+          </div>
+        ) : (
+          <AnimatePresence>
+            {mode && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex-1 flex flex-col min-h-0 w-full"
+              >
+                <div className="bg-neutral-900 border-b border-neutral-800 px-6 py-3 flex flex-col shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-neutral-400">
+                      {mode === 'interactive' ? <LayoutDashboard size={16} /> : mode === 'proxy' || !scrapeData ? <Terminal size={16} /> : <FileSearch size={16} />}
+                      <span className="text-xs font-mono uppercase tracking-widest text-neutral-500">
+                        {mode === 'interactive' ? 'Interactive Browser Proxy' : mode === 'proxy' || !scrapeData ? 'Terminal Output' : 'Scrape Results'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Horizontal Sub Navigation */}
+                  {mode === 'scrape' && scrapeData && (
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-1.5 mt-4 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+                      {[
+                        { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+                        { id: 'ai', icon: Sparkles, label: 'AI Review ✨' },
+                        { id: 'insights', icon: Cpu, label: 'SEO & Tech' },
+                        { id: 'headings', icon: Heading, label: 'Headings' },
+                        { id: 'images', icon: ImageIcon, label: 'Images' },
+                        { id: 'media', icon: Film, label: 'Media & Video' },
+                        { id: 'links', icon: LinkIcon, label: 'Links' },
+                        { id: 'deep', icon: Database, label: 'Deep Scan Data' },
+                        { id: 'raw', icon: Code2, label: 'Raw Output' },
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setSubTab(tab.id as any)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all whitespace-nowrap shrink-0 border ${
+                            subTab === tab.id 
+                              ? 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20 shadow-sm shadow-indigo-900/10' 
+                              : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/80 border-transparent hover:border-neutral-700/50'
+                          }`}
+                        >
+                          <tab.icon size={14} className={subTab === tab.id ? 'text-indigo-400' : 'text-neutral-500'} />
+                          {tab.label}
+                        </button>
+                      ))}
+                      
+                      <div className="flex-1 min-w-[20px]" />
+                      <button 
+                        onClick={exportAsJSON}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 transition-colors whitespace-nowrap shrink-0 border border-emerald-400/20 shadow-sm shadow-emerald-900/10"
+                      >
+                        <Download size={14} />
+                        Export
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto flex flex-col">
+                  {mode === 'interactive' ? (
+                     <div className="flex flex-col h-full grow">
+                         {interactiveMedia.length > 0 && (
+                             <div className="bg-emerald-950/30 border-b border-emerald-900/50 p-4 shrink-0">
+                                 <div className="text-emerald-400 font-mono text-sm mb-2 flex items-center gap-2">
+                                     <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                     Media Sniffed:
+                                 </div>
+                                 <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
+                                     {interactiveMedia.map((m, i) => (
+                                         <div key={i} className="flex items-center justify-between p-2 rounded bg-black/40 border border-white/5">
+                                             <span className="text-xs truncate font-mono select-all text-neutral-300 w-4/5">{m}</span>
+                                             <a href={m} target="_blank" rel="noreferrer" className="text-xs bg-emerald-600/20 text-emerald-300 px-2 py-1 rounded hover:bg-emerald-600/40">Open</a>
+                                         </div>
+                                     ))}
+                                 </div>
+                             </div>
+                         )}
+                         <iframe 
+                           className="flex-1 w-full border-none bg-white min-h-0" 
+                           src={`/?url=${encodeURIComponent(url.startsWith('http') ? url : 'https://' + url)}&t=${Date.now()}`}
+                           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"
+                         />
+                     </div>
+                  ) : mode === 'scrape' && scrapeData ? (
+                    renderScrapeView()
+                  ) : (
+                    <div className="p-6 w-full flex-1 bg-[#0a0a0a]">
+                      <pre className="font-mono text-sm leading-relaxed text-blue-200/90 whitespace-pre-wrap break-all break-words w-full h-full">
+                        {output}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </main>
     </div>
   );

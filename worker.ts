@@ -335,81 +335,129 @@ app.get("/api/scrape", async (c) => {
   }
 });
 
-// Reverse Proxy to Dracinku
-app.all("/assets/*", proxyRequest);
-app.all("/api/*", async (c, next) => {
-   if (c.req.path.startsWith('/api/scrape') || c.req.path.startsWith('/api/health') || c.req.path.startsWith('/api/check') || c.req.path.startsWith('/api/proxy') || c.req.path.startsWith('/api/ai-analyze')) {
-      return next();
+// Generic Reverse Proxy
+app.all("*", async (c, next) => {
+   if (['/api/ai-analyze', '/api/proxy', '/api/check', '/api/scrape'].includes(c.req.path) || c.req.path.startsWith('/app/') || c.req.path.endsWith('.ts') || c.req.path.endsWith('.tsx')) {
+       return next();
    }
-   return proxyRequest(c);
+
+   let targetOrigin = '';
+   const cookieHeader = c.req.header('cookie') || '';
+   const cookies = cookieHeader.split(';').map(c => c.trim());
+   for (const cookie of cookies) {
+       if (cookie.startsWith('proxy_target=')) {
+           targetOrigin = decodeURIComponent(cookie.substring('proxy_target='.length));
+       }
+   }
+
+   let targetUrlString = '';
+   let setCookieStr = '';
+
+   const queryUrl = c.req.query('url');
+   if (queryUrl) {
+       try {
+           const u = new URL(queryUrl);
+           targetOrigin = u.origin;
+           setCookieStr = `proxy_target=${encodeURIComponent(targetOrigin)}; Path=/`;
+           targetUrlString = queryUrl;
+       } catch(e) {}
+   }
+
+   if (!targetOrigin && c.req.path === '/') {
+       return c.redirect('/app/');
+   }
+
+   if (!targetOrigin) {
+       return next();
+   }
+   
+   if (!targetUrlString) {
+       targetUrlString = `${targetOrigin}${c.req.path}${new URL(c.req.url).search}`;
+   }
+
+   // Copy headers
+   const headers = new Headers();
+   c.req.raw.headers.forEach((v: string, k: string) => {
+       if (!['host', 'connection', 'referer', 'origin'].includes(k.toLowerCase())) {
+           headers.set(k, v);
+       }
+   });
+   
+   try {
+       const u = new URL(targetUrlString);
+       headers.set('host', u.host);
+       headers.set('referer', u.origin + '/');
+       headers.set('origin', u.origin);
+       
+       const response = await fetch(targetUrlString, {
+           method: c.req.method,
+           headers,
+           body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+           redirect: 'manual'
+       });
+       
+       let htmlContent: string | null = null;
+       const contentType = response.headers.get('content-type') || '';
+       
+       if (contentType.includes('text/html')) {
+           let html = await response.text();
+           html = html.replace('<head>', `<head>
+              <script>
+                  window.__PROXY_ROOT__ = true;
+                  
+                  // Intercept fetch
+                  const _fetch = window.fetch;
+                  window.fetch = async (...args) => {
+                      const url = typeof args[0] === 'string' ? args[0] : (args[0] ? args[0].url : '');
+                      if (url && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts'))) {
+                          window.parent.postMessage({ type: 'MEDIA_FOUND', src: url }, '*');
+                      }
+                      return _fetch(...args);
+                  };
+
+                  // Intercept XMLHttpRequest
+                  const _XHR = window.XMLHttpRequest;
+                  window.XMLHttpRequest = function() {
+                      const xhr = new _XHR();
+                      const _open = xhr.open;
+                      xhr.open = function(method, url, ...rest) {
+                          if (typeof url === 'string' && (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts'))) {
+                              window.parent.postMessage({ type: 'MEDIA_FOUND', src: url }, '*');
+                          }
+                          return _open.call(this, method, url, ...rest);
+                      };
+                      return xhr;
+                  };
+
+                  // Intercept video play
+                  document.addEventListener('play', (e) => {
+                      if (e.target && e.target.src) {
+                          window.parent.postMessage({ type: 'MEDIA_FOUND', src: e.target.src }, '*');
+                      }
+                  }, true);
+              </script>
+           `);
+           htmlContent = html;
+       }
+       
+       let newResponse = new Response(htmlContent !== null ? htmlContent : response.body, response);
+       if (htmlContent !== null) {
+           newResponse.headers.set('content-type', contentType);
+       }
+       
+       newResponse.headers.delete('X-Frame-Options');
+       newResponse.headers.delete('Content-Security-Policy');
+       newResponse.headers.set('Access-Control-Allow-Origin', '*');
+
+       if (setCookieStr) {
+           newResponse.headers.append('Set-Cookie', setCookieStr);
+       }
+       
+       return newResponse;
+   } catch (e: any) {
+       return c.text("Proxy Error: " + e.message, 500);
+   }
 });
-app.all("/d-proxy/*", proxyRequest);
-app.all("/browse/*", proxyRequest);
-app.all("/search/*", proxyRequest);
-app.all("/play/*", proxyRequest);
-app.all("/history/*", proxyRequest);
-app.all("/login/*", proxyRequest);
-app.all("/image/*", proxyRequest);
-
-async function proxyRequest(c: any) {
-    let targetPath = c.req.path;
-    if (targetPath.startsWith('/d-proxy')) {
-        targetPath = targetPath.replace('/d-proxy', '') || '/';
-    }
-    const targetUrl = `https://dracinku.site${targetPath}${new URL(c.req.url).search}`;
-    
-    // Copy headers
-    const headers = new Headers();
-    c.req.raw.headers.forEach((v: string, k: string) => {
-        if (!['host', 'connection', 'referer', 'origin'].includes(k.toLowerCase())) {
-            headers.set(k, v);
-        }
-    });
-    headers.set('host', 'dracinku.site');
-    headers.set('referer', 'https://dracinku.site/');
-    headers.set('origin', 'https://dracinku.site');
-    
-    try {
-        const response = await fetch(targetUrl, {
-            method: c.req.method,
-            headers,
-            body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
-            redirect: 'manual'
-        });
-        
-        let newResponse = new Response(response.body, response);
-        const contentType = response.headers.get('content-type') || '';
-        
-        if (contentType.includes('text/html')) {
-            let html = await response.text();
-            html = html.replace('<head>', `<head>
-               <script>
-                   const _fetch = window.fetch;
-                   window.fetch = async (...args) => {
-                       const url = typeof args[0] === 'string' ? args[0] : (args[0] ? args[0].url : '');
-                       if (url && (url.includes('.m3u8') || url.includes('.mp4'))) {
-                           window.parent.postMessage({ type: 'MEDIA_FOUND', src: url }, '*');
-                       }
-                       return _fetch(...args);
-                   };
-                   document.addEventListener('play', (e) => {
-                       if (e.target && e.target.src) {
-                           window.parent.postMessage({ type: 'MEDIA_FOUND', src: e.target.src }, '*');
-                       }
-                   }, true);
-               </script>
-            `);
-            newResponse = new Response(html, response);
-            newResponse.headers.set('content-type', contentType);
-        }
-        
-        return newResponse;
-    } catch (e: any) {
-        return c.text("Proxy Error: " + e.message, 500);
-    }
-}
-
-app.get('/', (c) => c.redirect('/app/'));
 
 app.get('/*', async (c) => {
   return c.env.ASSETS.fetch(new Request(new URL("/", c.req.url), c.req.raw));
