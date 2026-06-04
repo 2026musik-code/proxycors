@@ -335,6 +335,82 @@ app.get("/api/scrape", async (c) => {
   }
 });
 
+// Reverse Proxy to Dracinku
+app.all("/assets/*", proxyRequest);
+app.all("/api/*", async (c, next) => {
+   if (c.req.path.startsWith('/api/scrape') || c.req.path.startsWith('/api/health') || c.req.path.startsWith('/api/check') || c.req.path.startsWith('/api/proxy') || c.req.path.startsWith('/api/ai-analyze')) {
+      return next();
+   }
+   return proxyRequest(c);
+});
+app.all("/d-proxy/*", proxyRequest);
+app.all("/browse/*", proxyRequest);
+app.all("/search/*", proxyRequest);
+app.all("/play/*", proxyRequest);
+app.all("/history/*", proxyRequest);
+app.all("/login/*", proxyRequest);
+app.all("/image/*", proxyRequest);
+
+async function proxyRequest(c: any) {
+    let targetPath = c.req.path;
+    if (targetPath.startsWith('/d-proxy')) {
+        targetPath = targetPath.replace('/d-proxy', '') || '/';
+    }
+    const targetUrl = `https://dracinku.site${targetPath}${new URL(c.req.url).search}`;
+    
+    // Copy headers
+    const headers = new Headers();
+    c.req.raw.headers.forEach((v: string, k: string) => {
+        if (!['host', 'connection', 'referer', 'origin'].includes(k.toLowerCase())) {
+            headers.set(k, v);
+        }
+    });
+    headers.set('host', 'dracinku.site');
+    headers.set('referer', 'https://dracinku.site/');
+    headers.set('origin', 'https://dracinku.site');
+    
+    try {
+        const response = await fetch(targetUrl, {
+            method: c.req.method,
+            headers,
+            body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+            redirect: 'manual'
+        });
+        
+        let newResponse = new Response(response.body, response);
+        const contentType = response.headers.get('content-type') || '';
+        
+        if (contentType.includes('text/html')) {
+            let html = await response.text();
+            html = html.replace('<head>', `<head>
+               <script>
+                   const _fetch = window.fetch;
+                   window.fetch = async (...args) => {
+                       const url = typeof args[0] === 'string' ? args[0] : (args[0] ? args[0].url : '');
+                       if (url && (url.includes('.m3u8') || url.includes('.mp4'))) {
+                           window.parent.postMessage({ type: 'MEDIA_FOUND', src: url }, '*');
+                       }
+                       return _fetch(...args);
+                   };
+                   document.addEventListener('play', (e) => {
+                       if (e.target && e.target.src) {
+                           window.parent.postMessage({ type: 'MEDIA_FOUND', src: e.target.src }, '*');
+                       }
+                   }, true);
+               </script>
+            `);
+            newResponse = new Response(html, response);
+            newResponse.headers.set('content-type', contentType);
+        }
+        
+        return newResponse;
+    } catch (e: any) {
+        return c.text("Proxy Error: " + e.message, 500);
+    }
+}
+
+app.get('/', (c) => c.redirect('/app/'));
+
 app.get('/*', async (c) => {
   return c.env.ASSETS.fetch(new Request(new URL("/", c.req.url), c.req.raw));
 });

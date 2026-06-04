@@ -83,7 +83,21 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
   const [scrapeData, setScrapeData] = useState<any | null>(null);
-  const [mode, setMode] = useState<'proxy' | 'scrape' | null>(null);
+  const [mode, setMode] = useState<'proxy' | 'scrape' | 'interactive' | null>(null);
+  const [interactiveMedia, setInteractiveMedia] = useState<string[]>([]);
+
+  useEffect(() => {
+    const handleMsg = (e: MessageEvent) => {
+      if (e.data?.type === 'MEDIA_FOUND' && e.data.src) {
+        setInteractiveMedia(prev => {
+          if (!prev.includes(e.data.src)) return [...prev, e.data.src];
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('message', handleMsg);
+    return () => window.removeEventListener('message', handleMsg);
+  }, []);
   const [subTab, setSubTab] = useState<'overview' | 'insights' | 'headings' | 'images' | 'links' | 'media' | 'deep' | 'ai' | 'raw'>('overview');
   const [copied, setCopied] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
@@ -101,7 +115,7 @@ export default function App() {
     localStorage.setItem('vpsai_gemini_key', val);
   };
 
-  const fetchAction = async (action: 'proxy' | 'scrape') => {
+  const fetchAction = async (action: 'proxy' | 'scrape' | 'interactive') => {
     if (!url) return;
     
     const validUrl = url.startsWith('http://') || url.startsWith('https://') 
@@ -113,6 +127,12 @@ export default function App() {
     setOutput(null);
     setScrapeData(null);
     setSubTab('overview');
+    
+    if (action === 'interactive') {
+       setInteractiveMedia([]);
+       setLoading(false);
+       return;
+    }
 
     try {
       let endpoint = `/api/${action}?url=${encodeURIComponent(validUrl)}`;
@@ -904,11 +924,19 @@ Our scraper uses standard HTTP requests. If a site actively blocks non-browser t
               />
             </div>
             
-            <div className="flex shrink-0 gap-2 px-2 sm:px-0">
+            <div className="flex shrink-0 gap-2 px-2 sm:px-0 overflow-x-auto">
+              <button
+                onClick={() => fetchAction('interactive')}
+                disabled={loading || !url}
+                className="flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed border border-white/5 transition-colors text-white shadow-md shadow-emerald-900/20 text-sm font-medium"
+              >
+                <LayoutDashboard size={16} />
+                Interactive
+              </button>
               <button
                 onClick={() => fetchAction('proxy')}
                 disabled={loading || !url}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed border border-white/5 transition-colors text-sm font-medium"
+                className="flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed border border-white/5 transition-colors text-sm font-medium"
               >
                 <Globe size={16} />
                 Proxy
@@ -916,7 +944,7 @@ Our scraper uses standard HTTP requests. If a site actively blocks non-browser t
               <button
                 onClick={() => fetchAction('scrape')}
                 disabled={loading || !url}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-md shadow-indigo-900/20 transition-all text-sm font-medium"
+                className="flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-md shadow-indigo-900/20 transition-all text-sm font-medium"
               >
                 <FileSearch size={16} />
                 Deep Scrape
@@ -935,9 +963,9 @@ Our scraper uses standard HTTP requests. If a site actively blocks non-browser t
             >
               <div className="bg-neutral-900 border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-neutral-400">
-                  {mode === 'proxy' || !scrapeData ? <Terminal size={16} /> : <FileSearch size={16} />}
+                  {mode === 'interactive' ? <LayoutDashboard size={16} /> : mode === 'proxy' || !scrapeData ? <Terminal size={16} /> : <FileSearch size={16} />}
                   <span className="text-xs font-mono uppercase tracking-widest text-neutral-500">
-                    {mode === 'proxy' || !scrapeData ? 'Terminal Output' : 'Scrape Results'}
+                    {mode === 'interactive' ? 'Interactive Browser Proxy' : mode === 'proxy' || !scrapeData ? 'Terminal Output' : 'Scrape Results'}
                   </span>
                 </div>
                 <div className="flex gap-1.5">
@@ -955,7 +983,31 @@ Our scraper uses standard HTTP requests. If a site actively blocks non-browser t
                   </div>
                 ) : (
                   <>
-                    {mode === 'scrape' && scrapeData ? (
+                    {mode === 'interactive' ? (
+                       <div className="flex flex-col h-[700px]">
+                           {interactiveMedia.length > 0 && (
+                               <div className="bg-emerald-950/30 border-b border-emerald-900/50 p-3">
+                                   <div className="text-emerald-400 font-mono text-sm mb-2 flex items-center gap-2">
+                                       <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                       Media Sniffed:
+                                   </div>
+                                   <div className="flex flex-col gap-2">
+                                       {interactiveMedia.map((m, i) => (
+                                           <div key={i} className="flex items-center justify-between p-2 rounded bg-black/40 border border-white/5">
+                                               <span className="text-xs truncate font-mono select-all text-neutral-300 w-4/5">{m}</span>
+                                               <a href={m} target="_blank" rel="noreferrer" className="text-xs bg-emerald-600/20 text-emerald-300 px-2 py-1 rounded hover:bg-emerald-600/40">Open</a>
+                                           </div>
+                                       ))}
+                                   </div>
+                               </div>
+                           )}
+                           <iframe 
+                             className="flex-1 w-full border-none bg-white" 
+                             src={`/d-proxy${new URL("http://" + url.replace(/^https?:\/\//, '')).pathname + new URL("http://" + url.replace(/^https?:\/\//, '')).search}`}
+                             sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+                           />
+                       </div>
+                    ) : mode === 'scrape' && scrapeData ? (
                       renderScrapeView()
                     ) : (
                       <div className="p-4 sm:p-6 w-full min-w-0 overflow-y-auto max-h-[600px] overflow-hidden">

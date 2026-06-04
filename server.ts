@@ -390,6 +390,80 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
     }
   });
 
+  app.get('/', (req, res) => {
+    res.redirect('/app/');
+  });
+
+  // Reverse Proxy for dracinku.site
+  app.all(/^\/(assets|api|d-proxy|image|browse|search|play|history|login)(\/.*)?$/, async (req, res, next) => {
+    // Exclude our own API
+    if (req.path.startsWith('/api/scrape') || req.path.startsWith('/api/health') || req.path.startsWith('/api/check') || req.path.startsWith('/api/proxy') || req.path.startsWith('/api/ai-analyze')) {
+      return next();
+    }
+    
+    let targetPath = req.path;
+    if (req.path.startsWith('/d-proxy')) {
+        targetPath = req.path.replace('/d-proxy', '') || '/';
+    }
+    
+    const targetUrl = `https://dracinku.site${targetPath}${req.url.substring(req.path.length)}`;
+    
+    try {
+        const rHeaders: any = {};
+        for(let k in req.headers) {
+            if (!['host', 'connection', 'referer', 'origin'].includes(k.toLowerCase())) {
+               rHeaders[k] = req.headers[k];
+            }
+        }
+        rHeaders['host'] = 'dracinku.site';
+        rHeaders['referer'] = 'https://dracinku.site/';
+        rHeaders['origin'] = 'https://dracinku.site';
+
+        const response = await fetch(targetUrl, {
+            method: req.method,
+            headers: rHeaders,
+            body: ['GET', 'HEAD'].includes(req.method) ? undefined : req.body as any,
+            redirect: 'manual'
+        });
+        
+        response.headers.forEach((val, key) => {
+            if (!['content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
+                res.setHeader(key, val);
+            }
+        });
+        
+        res.status(response.status);
+        
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) {
+            let html = await response.text();
+            html = html.replace('<head>', `<head>
+               <script>
+                   const _fetch = window.fetch;
+                   window.fetch = async (...args) => {
+                       const url = typeof args[0] === 'string' ? args[0] : (args[0] ? args[0].url : '');
+                       if (url && (url.includes('.m3u8') || url.includes('.mp4'))) {
+                           window.parent.postMessage({ type: 'MEDIA_FOUND', src: url }, '*');
+                       }
+                       return _fetch(...args);
+                   };
+                   document.addEventListener('play', (e) => {
+                       if (e.target && e.target.src) {
+                           window.parent.postMessage({ type: 'MEDIA_FOUND', src: e.target.src }, '*');
+                       }
+                   }, true);
+               </script>
+            `);
+            res.send(html);
+        } else {
+            const buffer = await response.arrayBuffer();
+            res.send(Buffer.from(buffer));
+        }
+    } catch (e: any) {
+        res.status(500).send("Proxy error: " + e.message);
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
