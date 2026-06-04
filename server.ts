@@ -155,6 +155,17 @@ ${JSON.stringify({ metadata, seo, stats, headings }, null, 2).substring(0, 3000)
                 if (url.includes('.m3u8') || url.includes('.mp4')) {
                     networkMediaUrls.add(url);
                 }
+                
+                // DevTools Network Tab simulation: Peek into JSON or text responses to find hidden media URLs
+                const contentType = res.headers()['content-type'] || '';
+                if (contentType.includes('application/json') || contentType.includes('text/')) {
+                    const text = await res.text();
+                    const mediaRegex = /(https?:\/\/[^"'\s\\<>]+?\.(?:mp4|m3u8)(?:\?[^"'\s\\<>]*)?)/gi;
+                    let match;
+                    while ((match = mediaRegex.exec(text)) !== null) {
+                        networkMediaUrls.add(match[1]);
+                    }
+                }
             } catch(e) {}
         });
 
